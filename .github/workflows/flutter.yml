@@ -1,0 +1,105 @@
+name: Flutter CI/CD
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+  # 允许手动触发工作流
+  workflow_dispatch:
+
+jobs:
+  build-and-release:
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        include:
+          - os: ubuntu-latest
+            flutter_build: web
+            build_target: web-release
+            build_path: build/web
+            artifact_name: web-build
+          - os: windows-latest
+            flutter_build: windows
+            build_target: windows-release
+            build_path: build/windows/runner/Release
+            artifact_name: windows-build
+          - os: macos-latest
+            flutter_build: macos
+            build_target: macos-release
+            build_path: build/macos/Build/Products/Release
+            artifact_name: macos-build
+
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+      
+      - name: Install dependencies
+        run: flutter pub get
+        
+      - name: Enable platform
+        run: flutter config --enable-${{ matrix.flutter_build }}
+        
+      - name: Build application
+        run: flutter build ${{ matrix.flutter_build }} --release
+        
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.build_path }}
+          
+  build-android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.16.0'
+          channel: 'stable'
+          
+      - name: Install dependencies
+        run: flutter pub get
+        
+      - name: Build APK
+        run: flutter build apk --release
+        
+      - name: Upload APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: android-build
+          path: build/app/outputs/flutter-apk/app-release.apk
+          
+  create-release:
+    needs: [build-and-release, build-android]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Release v${{ github.run_number }}
+          draft: true
+          files: |
+            windows-build/**
+            web-build/**
+            macos-build/**
+            android-build/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
