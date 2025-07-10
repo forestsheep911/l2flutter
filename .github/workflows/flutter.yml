@@ -10,81 +10,91 @@ on:
 jobs:
   build-and-release:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60  # 增加超时时间到 60 分钟
+    timeout-minutes: 60
     
     strategy:
-      fail-fast: false   # 防止一个平台失败导致其他平台也取消
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
         include:
           - os: ubuntu-latest
             flutter_build: web
-            build_target: web-release
+            build_target: release
             build_path: build/web
             artifact_name: web-build
           - os: windows-latest
             flutter_build: windows
-            build_target: windows-release
+            build_target: release
             build_path: build/windows/runner/Release
             artifact_name: windows-build
           - os: macos-latest
             flutter_build: macos
-            build_target: macos-release
+            build_target: release
             build_path: build/macos/Build/Products/Release
             artifact_name: macos-build
 
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Flutter
+      - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.16.0'
           channel: 'stable'
-          cache: true        # 启用缓存
-          cache-key: 'flutter-:os:-:channel:-:version:-:arch:-:hash:' # 缓存 key
-          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
           architecture: x64
-      
-      - name: Install dependencies
+          cache: true
+          
+      - name: Get dependencies
         run: flutter pub get
         
-      - name: Enable platform
-        run: flutter config --enable-${{ matrix.flutter_build }}
+      - name: Enable platforms
+        run: |
+          if [ "${{ matrix.flutter_build }}" = "windows" ]; then
+            flutter config --enable-windows-desktop
+          elif [ "${{ matrix.flutter_build }}" = "macos" ]; then
+            flutter config --enable-macos-desktop
+          fi
+        shell: bash
         
-      - name: Build application
-        run: flutter build ${{ matrix.flutter_build }} --release
+      - name: Build ${{ matrix.flutter_build }}
+        run: |
+          if [ "${{ matrix.flutter_build }}" = "web" ]; then
+            flutter build web --release
+          elif [ "${{ matrix.flutter_build }}" = "windows" ]; then
+            flutter build windows --release
+          elif [ "${{ matrix.flutter_build }}" = "macos" ]; then
+            flutter build macos --release
+          fi
+        shell: bash
         
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact_name }}
           path: ${{ matrix.build_path }}
-          
+
   build-android:
     runs-on: ubuntu-latest
-    timeout-minutes: 60  # 增加超时时间到 60 分钟
+    timeout-minutes: 60
     
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Flutter
+      - name: Install Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.16.0'
           channel: 'stable'
-          cache: true        # 启用缓存
-          cache-key: 'flutter-android-:os:-:channel:-:version:-:arch:-:hash:'
-          cache-path: '${{ runner.tool_cache }}/flutter/:channel:-:version:-:arch:'
           architecture: x64
+          cache: true
           
-      - name: Install dependencies
+      - name: Get dependencies
         run: flutter pub get
         
       - name: Build APK
         run: flutter build apk --release
         
-      - name: Upload APK
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: android-build
